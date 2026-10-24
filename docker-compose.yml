@@ -1,0 +1,29 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: windcast-api:1.0.0
+    environment:
+      DATA_DIR: /app/data/snapshot
+      CORS_ORIGINS: "http://localhost:8080,http://localhost:5173"
+      WIND_CAPACITY_MW: "30000"
+      DA_PRICE_GBP_MWH: "85"
+      BALANCING_COST_GBP_MWH: "120"
+    expose:
+      - "8000"
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    image: windcast-ui:1.0.0
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    restart: unless-stopped

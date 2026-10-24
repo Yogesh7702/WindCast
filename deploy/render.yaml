@@ -1,0 +1,14 @@
+
+services:
+  - type: web
+    name: windcast-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATA_DIR
+        value: /app/data/snapshot
+      - key: CORS_ORIGINS
+        value: "*"

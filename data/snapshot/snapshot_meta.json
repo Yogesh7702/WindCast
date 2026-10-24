@@ -1,0 +1,26 @@
+{
+  "generated_at": "2026-10-23T12:12:27+00:00",
+  "sources": {
+    "actuals": "https://data.elexon.co.uk/bmrs/api/v1/datasets/FUELHH",
+    "forecasts": "https://data.elexon.co.uk/bmrs/api/v1/datasets/WINDFOR"
+  },
+  "delivery_period": {
+    "from": "2026-01-01",
+    "to": "2026-01-31"
+  },
+  "forecast_publish_pull_window": {
+    "from": "2025-12-24",
+    "to": "2026-02-02"
+  },
+  "counts": {
+    "actual_rows": 1488,
+    "forecast_rows_halfhourly": 38544,
+    "forecast_rows_hourly": 23944,
+    "distinct_vintages": 288
+  },
+  "notes": [
+    "FUELHH fuelType == WIND only; national aggregation as published by Elexon.",
+    "WINDFOR hourly forecast applied to both half-hours of the hour.",
+    "All timestamps stored in UTC. January 2026 is GMT, so settlement day == UTC day."
+  ]
+}

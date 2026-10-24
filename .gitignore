@@ -1,0 +1,25 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+frontend/dist/
+npm-debug.log*
+
+# Env / editor
+.env
+.env.local
+.DS_Store
+.vscode/
+.idea/
+
+# Local scratch & internal docs
+data/raw/*.json
+windcast.zip
+QUICKSTART.md
+docs/*.md
