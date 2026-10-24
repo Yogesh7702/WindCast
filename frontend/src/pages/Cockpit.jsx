@@ -10,14 +10,34 @@ import {
   XAxis,
   YAxis,
   Bar,
-  Legend,
 } from "recharts";
 import api from "../api";
 import useAsync from "../useAsync";
 import { C, fmtGbp, fmtGwh, fmtGW, fmtMW, fmtPct, hhmm, dayLabel } from "../utils";
-import { Badge, Callout, DataTable, ErrorState, Kpi, Loading, Panel, TooltipBox } from "../components/ui";
+import { Badge, Callout, DataTable, ErrorState, Kpi, Loading, Panel, TooltipBox, SegmentedControl } from "../components/ui";
 
-const CUTOFFS = ["02:30", "04:30", "07:30", "09:00", "11:30", "15:30", "18:30", "22:30"];
+const CUTOFF_OPTIONS = [
+  { value: "02:30", label: "02:30 UTC" },
+  { value: "04:30", label: "04:30 UTC" },
+  { value: "07:30", label: "07:30 UTC" },
+  { value: "09:00", label: "09:00 UTC (Auction Gate)" },
+  { value: "11:30", label: "11:30 UTC" },
+  { value: "15:30", label: "15:30 UTC" },
+  { value: "18:30", label: "18:30 UTC" },
+  { value: "22:30", label: "22:30 UTC" },
+];
+
+const CONFIDENCE_OPTIONS = [
+  { value: 0.8, label: "80% Confidence (P20)" },
+  { value: 0.9, label: "90% Confidence (P10 Default)" },
+  { value: 0.95, label: "95% Confidence (P05 Safe)" },
+];
+
+const QUICK_DAYS = [
+  { date: "2026-01-15", label: "15 Jan (Mid)" },
+  { date: "2026-01-19", label: "19 Jan (Lowest Error)" },
+  { date: "2026-01-28", label: "28 Jan (High Volatility)" },
+];
 
 export default function Cockpit({ meta, cutoff, setCutoff, initialDay }) {
   const days = meta.delivery_dates;
@@ -49,190 +69,184 @@ export default function Cockpit({ meta, cutoff, setCutoff, initialDay }) {
   const ex = rec.data?.exposure;
 
   return (
-    <div className="page">
-      <div className="controls">
-        <label>
-          <span>Delivery day</span>
-          <select value={day} onChange={(e) => setDay(e.target.value)}>
-            {days.map((d) => (
-              <option key={d} value={d}>
-                {dayLabel(d)} · {d}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Decision cut-off (UTC)</span>
-          <select value={cutoff} onChange={(e) => setCutoff(e.target.value)}>
-            {CUTOFFS.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Base demand</span>
-          <input
-            type="range"
-            min={25000}
-            max={55000}
-            step={500}
-            value={baseDemand}
-            onChange={(e) => setBaseDemand(Number(e.target.value))}
-          />
-          <b>{fmtGW(baseDemand, 1)} avg</b>
-        </label>
-        <label>
-          <span>Risk confidence</span>
-          <select value={confidence} onChange={(e) => setConfidence(Number(e.target.value))}>
-            <option value={0.8}>80% (P05 wind)</option>
-            <option value={0.9}>90% (P10 wind)</option>
-            <option value={0.95}>95% (P05 wind)</option>
-          </select>
-        </label>
+    <div className="page-container">
+      <div className="control-deck">
+        <div className="control-grid">
+          <div className="control-group">
+            <div className="control-label-row">
+              <span className="control-label">Target Delivery Day</span>
+              <div className="preset-pills">
+                {QUICK_DAYS.map((qd) => (
+                  <button
+                    key={qd.date}
+                    type="button"
+                    className={`pill-btn ${day === qd.date ? "active" : ""}`}
+                    onClick={() => setDay(qd.date)}
+                  >
+                    {qd.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <select className="custom-select" value={day} onChange={(e) => setDay(e.target.value)}>
+              {days.map((d) => (
+                <option key={d} value={d}>
+                  {dayLabel(d)} ({d})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="control-group">
+            <span className="control-label">Decision Cut-off (D-1 Vintage Selection)</span>
+            <SegmentedControl
+              options={CUTOFF_OPTIONS}
+              value={cutoff}
+              onChange={setCutoff}
+              size="sm"
+            />
+          </div>
+
+          <div className="control-group">
+            <span className="control-label">Risk Appetite / Downside Quantile</span>
+            <SegmentedControl
+              options={CONFIDENCE_OPTIONS}
+              value={confidence}
+              onChange={setConfidence}
+              size="sm"
+            />
+          </div>
+
+          <div className="control-group">
+            <div className="control-label-row">
+              <span className="control-label">Base Demand Calibration</span>
+              <span className="control-val-badge">{fmtGW(baseDemand, 1)} avg</span>
+            </div>
+            <div className="slider-wrapper">
+              <input
+                type="range"
+                className="custom-range"
+                min={25000}
+                max={55000}
+                step={500}
+                value={baseDemand}
+                onChange={(e) => setBaseDemand(Number(e.target.value))}
+              />
+              <div className="slider-ticks">
+                <span onClick={() => setBaseDemand(30000)}>30 GW (Low)</span>
+                <span onClick={() => setBaseDemand(38000)}>38 GW (Typical)</span>
+                <span onClick={() => setBaseDemand(48000)}>48 GW (Peak)</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {(forecast.loading && !forecast.data) || (rec.loading && !rec.data) ? (
-        <Loading label="Building the day-ahead picture" />
+        <Loading label="Computing Risk-Adjusted Sizing Profile" />
       ) : forecast.error || rec.error ? (
         <ErrorState error={forecast.error || rec.error} onRetry={() => { forecast.retry(); rec.retry(); }} />
       ) : (
         <>
-          <div className="kpi-row">
+          <div className="kpi-grid">
             <Kpi
-              label="Wind forecast · delivery day"
+              label="Wind Point Forecast"
               value={fmtGwh(t.wind_expected_mwh)}
-              sub={`avg ${fmtGW(t.wind_expected_mwh / 24)} · ${dayLabel(day)}`}
+              sub={`Daily avg ${fmtGW(t.wind_expected_mwh / 24)}`}
               tone="blue"
+              badge="Point Forecast"
             />
             <Kpi
-              label={`Risk-adjusted wind (P${Math.round((1 - confidence) * 100)})`}
+              label={`Conservative Wind (P${Math.round((1 - confidence) * 100)})`}
               value={fmtGwh(t.wind_low_mwh)}
-              sub={`${fmtGwh(t.wind_expected_mwh - t.wind_low_mwh)} downside cover`}
+              sub={`${fmtGwh(t.wind_expected_mwh - t.wind_low_mwh)} downside cushion`}
               tone="amber"
+              badge={`${confidence * 100}% Protected`}
             />
             <Kpi
-              label="Thermal / DA purchase required"
+              label="Base Thermal / DA Required"
               value={fmtGwh(t.thermal_expected_mwh)}
-              sub={`peak ${fmtMW(t.peak_thermal_expected_mw)}`}
+              sub={`Peak ${fmtMW(t.peak_thermal_expected_mw)} needed`}
               tone="default"
+              badge="Unadjusted"
             />
             <Kpi
-              label="Risk buffer to secure"
-              value={fmtGwh(t.buffer_mwh)}
-              sub={`peak ${fmtMW(t.peak_thermal_secure_mw)} · cost ${fmtGbp(ex.buffer_cost_gbp)}`}
-              tone="red"
+              label="Secured Procurement Target"
+              value={fmtGwh(t.thermal_secure_mwh)}
+              sub={`Includes +${fmtGwh(t.buffer_mwh)} risk buffer`}
+              tone="emerald"
+              badge="Actionable Target"
             />
             <Kpi
-              label="Forecast error · this day"
-              value={fmtMW(m.mae_mw)}
-              sub={`MAE · bias ${fmtMW(m.mbe_mw)} · ${fmtPct(m.mape_pct)} MAPE`}
-              tone="default"
+              label="Imbalance Cost Avoidance"
+              value={fmtGbp(ex.avoided_shortfall_gbp - ex.buffer_cost_gbp)}
+              sub={`Buffer cost ${fmtGbp(ex.buffer_cost_gbp)}`}
+              tone="indigo"
+              badge="Net Value"
             />
           </div>
 
-          <div className="meta-strip">
-            <span>
-              <strong>Forecast vintage in use:</strong> published{" "}
-              {new Date(forecast.data.vintage_used).toISOString().slice(0, 16).replace("T", " ")}Z
-            </span>
-            <span>
-              <strong>Lead time:</strong> {forecast.data.lead_hours.min}–{forecast.data.lead_hours.max} h before
-              delivery
-            </span>
-            <span>
-              <strong>Cut-off:</strong> {forecast.data.cutoff_utc.slice(0, 16).replace("T", " ")}Z
-            </span>
-            <Badge tone="info">Latest vintage before cut-off automatically selected</Badge>
+          <div className="status-banner">
+            <div className="status-item">
+              <span className="status-label">Active Forecast Vintage:</span>
+              <span className="status-val">{forecast.data.vintage_used} UTC</span>
+            </div>
+            <div className="status-item">
+              <span className="status-label">Forecast Lead Window:</span>
+              <span className="status-val">{forecast.data.lead_hours.min}h → {forecast.data.lead_hours.max}h</span>
+            </div>
+            <div className="status-item">
+              <span className="status-label">Realized Day Error:</span>
+              <span className="status-val">MAE {fmtMW(m.mae_mw)} ({fmtPct(m.mape_pct)} MAPE)</span>
+            </div>
           </div>
 
-          <Panel
-            title="Wind generation vs the forecast the desk would have seen"
-            subtitle="Blue band = P10–P90 empirical error range at the actual lead time of each settlement period. Teal = realised outturn."
-            right={<Legend />}
-          >
-            <ResponsiveContainer width="100%" height={340}>
-              <ComposedChart data={series} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
-                <defs>
-                  <linearGradient id="bandFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={C.band} stopOpacity={0.35} />
-                    <stop offset="100%" stopColor={C.band} stopOpacity={0.05} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke={C.grid} strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="label" interval={3} stroke={C.text} tick={{ fontSize: 11 }} />
-                <YAxis
-                  stroke={C.text}
-                  tick={{ fontSize: 11 }}
-                  tickFormatter={(v) => `${(v / 1000).toFixed(0)} GW`}
-                  domain={[0, "dataMax + 1500"]}
-                />
-                <Tooltip content={<TooltipBox />} />
-                <Area
-                  dataKey="band"
-                  name="P10–P90 wind range"
-                  stroke="none"
-                  fill="url(#bandFill)"
-                  isAnimationActive={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="forecast_mw"
-                  name="Forecast (point)"
-                  stroke={C.forecast}
-                  strokeWidth={2.4}
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="actual_mw"
-                  name="Actual outturn"
-                  stroke={C.actual}
-                  strokeWidth={2.4}
-                  dot={false}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </Panel>
-
-          <div className="grid-2">
+          <div className="charts-split">
             <Panel
-              title="Procurement plan by settlement period"
-              subtitle="Demand (illustrative shape) split into wind output and the thermal/DA top-up that must be secured."
+              title="Wind Generation Profile & Uncertainty Corridor"
+              subtitle="Latest pre-cutoff forecast vintage vs empirical uncertainty band (P10–P90) and actual outturn."
+              right={
+                <div className="chart-legend-custom">
+                  <span className="legend-chip"><span className="chip-color chip-blue" /> WINDFOR Forecast</span>
+                  <span className="legend-chip"><span className="chip-color chip-band" /> P10–P90 Band</span>
+                  <span className="legend-chip"><span className="chip-color chip-teal" /> Realized Actual</span>
+                </div>
+              }
             >
-              <ResponsiveContainer width="100%" height={300}>
-                <ComposedChart data={series} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
+              <ResponsiveContainer width="100%" height={340}>
+                <ComposedChart data={series} margin={{ top: 12, right: 16, bottom: 0, left: 4 }}>
+                  <defs>
+                    <linearGradient id="bandGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#64748b" stopOpacity={0.15} />
+                      <stop offset="100%" stopColor="#64748b" stopOpacity={0.03} />
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid stroke={C.grid} strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="label" interval={5} stroke={C.text} tick={{ fontSize: 11 }} />
-                  <YAxis
-                    stroke={C.text}
-                    tick={{ fontSize: 11 }}
-                    tickFormatter={(v) => `${(v / 1000).toFixed(0)} GW`}
-                  />
-                  <Tooltip content={<TooltipBox />} />
-                  <Area
-                    dataKey="thermal_expected_mw"
-                    name="Thermal top-up (expected wind)"
-                    stackId="p"
-                    stroke={C.thermal}
-                    fill={C.thermal}
-                    fillOpacity={0.35}
-                  />
+                  <YAxis stroke={C.text} tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)} GW`} />
+                  <Tooltip content={<TooltipBox unit="MW" />} />
+                  <Area dataKey="wind_high_mw" name="P90 Ceiling" stroke="transparent" fill="transparent" />
                   <Area
                     dataKey="wind_low_mw"
-                    name="Wind (risk-adjusted)"
-                    stackId="p"
-                    stroke={C.forecast}
-                    fill={C.forecast}
-                    fillOpacity={0.35}
+                    name="Uncertainty Range"
+                    stroke="#94a3b8"
+                    strokeDasharray="3 3"
+                    fill="url(#bandGrad)"
                   />
                   <Line
-                    dataKey="demand_mw"
-                    name="Demand"
-                    stroke="#dbe4f5"
-                    strokeDasharray="5 4"
-                    strokeWidth={1.6}
+                    type="monotone"
+                    dataKey="forecast_mw"
+                    name="WINDFOR Forecast"
+                    stroke="#0f172a"
+                    strokeWidth={2.4}
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="actual_mw"
+                    name="Actual Outturn (FUELHH)"
+                    stroke="#059669"
+                    strokeWidth={2.4}
                     dot={false}
                   />
                 </ComposedChart>
@@ -240,66 +254,64 @@ export default function Cockpit({ meta, cutoff, setCutoff, initialDay }) {
             </Panel>
 
             <Panel
-              title="Error profile of this day"
-              subtitle="Forecast minus actual per settlement period. Positive = the forecast was too high, so thermal cover is under-bought."
+              title="Thermal Top-Up & Consumer Demand Coverage"
+              subtitle="Required thermal dispatch to cover national demand after accounting for conservative wind generation."
             >
-              <ResponsiveContainer width="100%" height={300}>
-                <ComposedChart data={series} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
+              <ResponsiveContainer width="100%" height={340}>
+                <ComposedChart data={series} margin={{ top: 12, right: 16, bottom: 0, left: 4 }}>
                   <CartesianGrid stroke={C.grid} strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="label" interval={5} stroke={C.text} tick={{ fontSize: 11 }} />
-                  <YAxis
-                    stroke={C.text}
-                    tick={{ fontSize: 11 }}
-                    tickFormatter={(v) => `${(v / 1000).toFixed(1)} GW`}
+                  <YAxis stroke={C.text} tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)} GW`} />
+                  <Tooltip content={<TooltipBox unit="MW" />} />
+                  <Bar
+                    dataKey="thermal_secure_mw"
+                    name="Thermal Required"
+                    stackId="p"
+                    fill="#dc2626"
+                    fillOpacity={0.85}
+                    radius={[2, 2, 0, 0]}
                   />
-                  <Tooltip content={<TooltipBox />} />
-                  <ReferenceLine y={0} stroke="#4a5a7a" />
-                  <Bar dataKey="error_mw" name="Forecast − actual" fill={C.low} radius={[2, 2, 0, 0]} />
+                  <Bar
+                    dataKey="wind_low_mw"
+                    name="Wind (P10 Bound)"
+                    stackId="p"
+                    fill="#0f172a"
+                    fillOpacity={0.75}
+                    radius={[2, 2, 0, 0]}
+                  />
+                  <Line
+                    dataKey="demand_mw"
+                    name="Target Demand"
+                    stroke="#475569"
+                    strokeDasharray="4 4"
+                    strokeWidth={2}
+                    dot={false}
+                  />
                 </ComposedChart>
               </ResponsiveContainer>
             </Panel>
           </div>
 
           <div className="grid-2">
-            <Panel title="What this means commercially" subtitle="Indicative exposure at the current assumptions.">
-              <ul className="insight-list">
-                <li>
-                  Secure <strong>{fmtGwh(t.thermal_secure_mwh)}</strong> of thermal / day-ahead energy (vs{" "}
-                  {fmtGwh(t.thermal_expected_mwh)} on the point forecast) to keep wind shortfall risk at or below{" "}
-                  {fmtPct((1 - confidence) * 100, 0)}.
-                </li>
-                <li>
-                  The buffer of <strong>{fmtGwh(t.buffer_mwh)}</strong> costs about{" "}
-                  <strong>{fmtGbp(ex.buffer_cost_gbp)}</strong> at £{ex.da_price_gbp_mwh}/MWh; the same volume
-                  bought in balancing would cost about {fmtGbp(ex.avoided_shortfall_gbp)}.
-                </li>
-                <li>
-                  Largest single-period exposure: <strong>{fmtMW(t.peak_thermal_secure_mw - t.peak_thermal_expected_mw)}</strong>{" "}
-                  of additional cover at the tightest period.
-                </li>
-                <li className="muted">{rec.data.assumptions.demand}</li>
-              </ul>
-            </Panel>
-
             <Panel
-              title="Settlement period detail"
-              subtitle="48 periods, UTC. Exportable values match the API payload 1:1."
+              title="Settlement Period Breakdown"
+              subtitle="Half-hourly data matching Elexon settlement periods (UTC)."
             >
               <DataTable
-                maxHeight={300}
+                maxHeight={320}
                 columns={[
                   { key: "settlementPeriod", label: "SP", align: "right" },
                   { key: "label", label: "Time", align: "right" },
-                  { key: "forecast_mw", label: "Forecast MW", align: "right", render: (r) => fmtMW(r.forecast_mw) },
-                  { key: "wind_low_mw", label: "P10 wind", align: "right", render: (r) => fmtMW(r.wind_low_mw) },
-                  { key: "thermal_secure_mw", label: "Thermal req.", align: "right", render: (r) => fmtMW(r.thermal_secure_mw) },
+                  { key: "forecast_mw", label: "Forecast", align: "right", render: (r) => fmtMW(r.forecast_mw) },
+                  { key: "wind_low_mw", label: "P10 Wind", align: "right", render: (r) => fmtMW(r.wind_low_mw) },
+                  { key: "thermal_secure_mw", label: "Procure Target", align: "right", render: (r) => fmtMW(r.thermal_secure_mw) },
                   { key: "actual_mw", label: "Actual", align: "right", render: (r) => fmtMW(r.actual_mw) },
                   {
                     key: "error_mw",
-                    label: "Error",
+                    label: "Delta",
                     align: "right",
                     render: (r) => (
-                      <span className={r.error_mw > 0 ? "neg" : "pos"}>
+                      <span className={r.error_mw > 0 ? "text-amber" : "text-emerald"}>
                         {r.error_mw > 0 ? "+" : ""}
                         {fmtMW(r.error_mw)}
                       </span>
@@ -309,14 +321,38 @@ export default function Cockpit({ meta, cutoff, setCutoff, initialDay }) {
                 rows={series}
               />
             </Panel>
-          </div>
 
-          <Callout tone="info" title="How the number is produced">
-            Latest WINDFOR vintage published before {cutoff}Z on the day before delivery → hourly values mapped
-            onto the 48 settlement periods → empirical P10–P90 error quantiles for that exact lead time subtracted
-            from the point forecast → wind range → demand minus wind = thermal requirement. All quantiles come from
-            January 2026 data only and are recalculated on refresh.
-          </Callout>
+            <Panel title="Commercial Analysis & Trade Strategy" subtitle="Economic translation of forecast uncertainty.">
+              <div className="commercial-card">
+                <div className="commercial-headline">
+                  To achieve <strong>{confidence * 100}% delivery assurance</strong>, procure{" "}
+                  <strong className="text-emerald">{fmtGwh(t.thermal_secure_mwh)}</strong> of thermal energy ahead of gate closure.
+                </div>
+                <div className="commercial-body">
+                  <div className="commercial-metric">
+                    <span className="metric-tag">Point Forecast Implication:</span>
+                    <span className="metric-num">{fmtGwh(t.thermal_expected_mwh)}</span>
+                  </div>
+                  <div className="commercial-metric">
+                    <span className="metric-tag">Recommended Downside Buffer:</span>
+                    <span className="metric-num">+{fmtGwh(t.buffer_mwh)}</span>
+                  </div>
+                  <div className="commercial-metric">
+                    <span className="metric-tag">Day-Ahead Buffer Cost:</span>
+                    <span className="metric-num">{fmtGbp(ex.buffer_cost_gbp)} (@ £{ex.da_price_gbp_mwh}/MWh)</span>
+                  </div>
+                  <div className="commercial-metric">
+                    <span className="metric-tag">Balancing Penalty Exposure:</span>
+                    <span className="metric-num text-rose">{fmtGbp(ex.avoided_shortfall_gbp)} (@ £{ex.balancing_price_gbp_mwh}/MWh)</span>
+                  </div>
+                </div>
+                <div className="commercial-footer">
+                  Net Expected Savings vs Emergency Balancing Purchase:{" "}
+                  <strong>{fmtGbp(ex.avoided_shortfall_gbp - ex.buffer_cost_gbp)}</strong>
+                </div>
+              </div>
+            </Panel>
+          </div>
         </>
       )}
     </div>

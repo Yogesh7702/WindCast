@@ -7,15 +7,19 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-  Legend,
-  ReferenceLine,
 } from "recharts";
 import api from "../api";
 import useAsync from "../useAsync";
 import { C, dayLabel, fmtMW, hhmm } from "../utils";
 import { Callout, DataTable, ErrorState, Kpi, Loading, Panel } from "../components/ui";
 
-const VINTAGE_RAMP = ["#28324a", "#3a4c72", "#4d6ba0", "#6191d6", "#7fb6ff", "#a9d1ff"];
+const VINTAGE_RAMP = ["#cbd5e1", "#94a3b8", "#64748b", "#475569", "#334155", "#0f172a"];
+
+const QUICK_DAYS = [
+  { date: "2026-01-15", label: "15 Jan (Mid Month)" },
+  { date: "2026-01-19", label: "19 Jan (Stable)" },
+  { date: "2026-01-28", label: "28 Jan (Volatile)" },
+];
 
 export default function Revisions({ meta }) {
   const days = meta.delivery_dates;
@@ -52,56 +56,84 @@ export default function Revisions({ meta }) {
   }, [data]);
 
   return (
-    <div className="page">
-      <div className="controls">
-        <label>
-          <span>Delivery day</span>
-          <select value={day} onChange={(e) => setDay(e.target.value)}>
+    <div className="page-container">
+      <div className="control-deck">
+        <div className="control-group">
+          <div className="control-label-row">
+            <span className="control-label">Inspect Delivery Day Convergence</span>
+            <div className="preset-pills">
+              {QUICK_DAYS.map((qd) => (
+                <button
+                  key={qd.date}
+                  type="button"
+                  className={`pill-btn ${day === qd.date ? "active" : ""}`}
+                  onClick={() => setDay(qd.date)}
+                >
+                  {qd.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <select className="custom-select" value={day} onChange={(e) => setDay(e.target.value)}>
             {days.map((d) => (
               <option key={d} value={d}>
-                {dayLabel(d)} · {d}
+                {dayLabel(d)} ({d})
               </option>
             ))}
           </select>
-        </label>
-        {stats && (
-          <div className="controls-note">
-            {stats.vintages} vintages · earliest lead {stats.earliest_lead} h · day-1 swing {fmtMW(stats.swing)}
-          </div>
-        )}
+        </div>
       </div>
 
       {loading && !data ? (
-        <Loading label="Loading forecast vintages" />
+        <Loading label="Reconstructing Forecast Convergence Timeline" />
       ) : error ? (
         <ErrorState error={error} onRetry={retry} />
       ) : (
         <>
-          <div className="kpi-row">
-            <Kpi label="Earlier vintages (2 days out)" value={fmtMW(stats.first_mean)} sub="mean across all 48 periods" />
-            <Kpi label="Latest vintage (D-1)" value={fmtMW(stats.last_mean)} sub="the number actually used for procurement" tone="blue" />
-            <Kpi label="Realised outturn" value={fmtMW(stats.actual_mean)} sub={`${dayLabel(day)} actual mean`} tone="teal" />
+          <div className="kpi-grid">
             <Kpi
-              label="Residual over-forecast at D-1"
-              value={fmtMW(stats.last_mean - stats.actual_mean)}
-              sub="what the desk would have needed to correct for"
-              tone="red"
+              label="Earliest Vintage (D-2)"
+              value={fmtMW(stats.first_mean)}
+              sub="Initial published outlook"
+              tone="default"
+              badge="48h Ahead"
+            />
+            <Kpi
+              label="Actionable Vintage (D-1 09:00)"
+              value={fmtMW(stats.last_mean)}
+              sub="Pre-auction decision number"
+              tone="blue"
+              badge="Gate Closure"
+            />
+            <Kpi
+              label="Actual Outturn (FUELHH)"
+              value={fmtMW(stats.actual_mean)}
+              sub={`${dayLabel(day)} realized mean`}
+              tone="emerald"
+              badge="Settled Power"
+            />
+            <Kpi
+              label="Level Over-Prediction"
+              value={`+${fmtMW(stats.last_mean - stats.actual_mean)}`}
+              sub="Residual bias at gate closure"
+              tone="amber"
+              badge="Systematic Gap"
             />
           </div>
 
           <Panel
-            title={`Forecast revisions towards ${dayLabel(day)}`}
-            subtitle="Each thin line is one published vintage; the bold line is the realised outturn. Forecasts converge, but often converge onto the wrong level."
+            title={`Forecast Convergence Trajectory (${dayLabel(day)})`}
+            subtitle="Evolution of published vintages across the 48h lead window. Darker curves denote older vintages; electric blue indicates latest pre-gate vintage; green represents actual outturn."
           >
             <ResponsiveContainer width="100%" height={360}>
-              <LineChart data={chart} margin={{ top: 10, right: 20, bottom: 0, left: 0 }}>
+              <LineChart data={chart} margin={{ top: 12, right: 16, bottom: 0, left: 4 }}>
                 <CartesianGrid stroke={C.grid} strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="label" interval={3} stroke={C.text} tick={{ fontSize: 11 }} />
                 <YAxis stroke={C.text} tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(1)} GW`} />
                 <Tooltip
-                  contentStyle={{ background: "#0f1729", border: "1px solid #24304a", borderRadius: 8, fontSize: 12 }}
-                  labelStyle={{ color: "#93a4c4" }}
-                  formatter={(v, n) => [fmtMW(v), n === "actual" ? "Actual outturn" : `Vintage ${n.slice(1)}`]}
+                  contentStyle={{ background: "#0e1526", border: "1px solid #1e293b", borderRadius: 8, fontSize: 12 }}
+                  labelStyle={{ color: "#94a3b8" }}
+                  formatter={(v, n) => [fmtMW(v), n === "actual" ? "Actual Outturn (FUELHH)" : `Vintage ${n.slice(1)}`]}
                 />
                 {data.publish_times.map((p, j) => (
                   <Line
@@ -110,30 +142,26 @@ export default function Revisions({ meta }) {
                     dataKey={`v${j}`}
                     name={`v${j}`}
                     stroke={VINTAGE_RAMP[Math.round((j / Math.max(data.publish_times.length - 1, 1)) * (VINTAGE_RAMP.length - 1))]}
-                    strokeWidth={1.3}
+                    strokeWidth={1.4}
                     dot={false}
                     isAnimationActive={false}
                     connectNulls
                   />
                 ))}
-                <Line type="monotone" dataKey="actual" name="actual" stroke={C.actual} strokeWidth={3} dot={false} />
+                <Line type="monotone" dataKey="actual" name="actual" stroke="#10b981" strokeWidth={3} dot={false} />
               </LineChart>
             </ResponsiveContainer>
-            <p className="footnote">
-              Vintage order runs dark → light. Because the day-ahead auction closes around 09:15 UK time, only the
-              vintages up to that cut-off are actionable.
-            </p>
           </Panel>
 
-          <Panel title="Vintage log" subtitle="Publish time, lead time to the first settlement period and the day mean.">
+          <Panel title="Historical Vintage Audit Log" subtitle="Timestamp, lead hours to first settlement period, and summary generation stats.">
             <DataTable
               maxHeight={320}
               columns={[
-                { key: "publish", label: "Published (UTC)" },
+                { key: "publish", label: "Published Timestamp (UTC)" },
                 { key: "lead", label: "Lead to SP1", align: "right" },
-                { key: "mean", label: "Day mean forecast", align: "right" },
-                { key: "min", label: "Min period", align: "right" },
-                { key: "max", label: "Max period", align: "right" },
+                { key: "mean", label: "Day Mean MW", align: "right" },
+                { key: "min", label: "Min Period MW", align: "right" },
+                { key: "max", label: "Peak Period MW", align: "right" },
               ]}
               rows={data.publish_times.map((p, j) => {
                 const row = data.matrix[j].filter((v) => v != null);
@@ -148,15 +176,6 @@ export default function Revisions({ meta }) {
               })}
             />
           </Panel>
-
-          <Callout tone="info" title="Why revisions matter for the desk">
-            The gap between the earliest and the D-1 vintage shows how much the procurement decision could move:
-            here the day mean shifted by {fmtMW(stats.last_mean - stats.first_mean)} between the D-2 and D-1 views,
-            while the outturn landed {fmtMW(stats.actual_mean - stats.last_mean)} away from the D-1 view. In January
-            2026 the intra-day <em>shape</em> was revised materially but the <em>level</em> was not — so waiting for the
-            latest vintage before the 09:15 auction is the right operating policy, and the residual gap is bias to
-            correct for, not noise to chase.
-          </Callout>
         </>
       )}
     </div>

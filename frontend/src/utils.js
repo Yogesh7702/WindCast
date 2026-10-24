@@ -55,11 +55,11 @@ export const maeBadgeClass = (maeMw) => {
 };
 
 export const C = {
-  forecast: "#5b9dff",
-  actual: "#2dd4bf",
-  band: "#5b9dff",
-  low: "#f5b544",
-  thermal: "#f26d6d",
-  grid: "#1f2a44",
-  text: "#93a4c4",
+  forecast: "#0f172a",
+  actual: "#059669",
+  band: "#cbd5e1",
+  low: "#d97706",
+  thermal: "#dc2626",
+  grid: "#e2e8f0",
+  text: "#64748b",
 };
