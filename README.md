@@ -136,7 +136,8 @@ The system is containerized and deployable to any cloud container host or server
 * **Backend Service:** Deployable via Docker on Render, Heroku, or Fly.io (port-agnostic entrypoint).
 * **Frontend SPA:** Deployable on Vercel or Netlify, routing `/api/*` requests to the hosted backend instance.
 
-* **Live Demo Application:** `https://windcast.vercel.app` *(Placeholder - update with deployed link)*
+* **Live Demo Application:** `https://wind-cast-five.vercel.app`
+* **Video Walkthrough:** `https://youtu.be/fVLRmN_wC5M`
 * **Live API Documentation:** `https://windcast.onrender.com/docs`
 * **Live API Health Check:** `https://windcast.onrender.com/api/health`
 
