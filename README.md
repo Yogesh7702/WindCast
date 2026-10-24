@@ -137,7 +137,8 @@ The system is containerized and deployable to any cloud container host or server
 * **Frontend SPA:** Deployable on Vercel or Netlify, routing `/api/*` requests to the hosted backend instance.
 
 * **Live Demo Application:** `https://windcast.vercel.app` *(Placeholder - update with deployed link)*
-* **Live API Documentation:** `https://windcast-api.onrender.com/docs` *(Placeholder - update with deployed link)*
+* **Live API Documentation:** `https://windcast.onrender.com/docs`
+* **Live API Health Check:** `https://windcast.onrender.com/api/health`
 
 ---
 
